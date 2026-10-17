@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Memo | منصة الكتب والمذكرات الذكية</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class',theme:{extend:{colors:{navy:'#0B132B',brand:'#2563EB',cyan2:'#22D3EE',pur:'#8B5CF6'},fontFamily:{sans:['Cairo','sans-serif']}}}}</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>body{font-family:'Cairo',sans-serif}.inp{width:100%;padding:.55rem .8rem;border-radius:.75rem;border:1px solid #cbd5e1;background:#f8fafc;font-size:.8rem;color:#0f172a}.dark .inp{background:#1e293b;border-color:#334155;color:#f1f5f9}.card{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1.25rem}.dark .card{background:#0f172a;border-color:#1e293b}.btn{padding:.55rem 1rem;border-radius:.75rem;font-weight:800;font-size:.8rem;background:#2563EB;color:#fff}.btn:disabled{opacity:.5}.btn2{padding:.45rem .8rem;border-radius:.7rem;border:1px solid #cbd5e1;font-weight:700;font-size:.75rem}.dark .btn2{border-color:#334155}</style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-navy dark:text-slate-100 min-h-screen flex flex-col">
+<div id="toast" class="fixed bottom-4 inset-x-4 sm:right-6 sm:left-auto sm:w-96 z-[60] hidden rounded-2xl p-4 text-xs font-bold shadow-2xl border"></div>
+<div id="statusbar" class="px-4 py-2 text-xs font-bold flex flex-wrap items-center justify-between gap-2 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-b border-amber-500/30">
+  <span id="status-text">غير متصل بقاعدة البيانات</span>
+  <button class="btn" onclick="openCfg()">⚙️ الإعداد والربط</button>
+</div>
+<header class="sticky top-0 z-40 bg-white/95 dark:bg-navy/95 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+  <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
+    <button onclick="go('home')" class="flex items-center gap-2 shrink-0"><span class="w-10 h-10 rounded-xl bg-navy dark:bg-brand text-cyan2 font-black flex items-center justify-center">SM</span><span class="font-black text-lg whitespace-nowrap hidden sm:inline">Smart Memo</span></button>
+    <nav class="flex items-center gap-1.5 text-xs font-bold relative shrink-0">
+      <button class="btn2 hidden sm:block" onclick="go('catalog')">الكتب والمذكرات</button>
+      <button class="btn2 hidden sm:block" onclick="go('library')">مكتبتي</button>
+      <button class="btn2" onclick="toggleDark()">🌓</button>
+      <button class="btn2" onclick="go('cart')">🛒 <b id="cart-n">0</b></button>
+      <button id="nav-auth" class="btn whitespace-nowrap" onclick="accClick(event)">دخول</button>
+      <div id="acc-menu" class="hidden absolute top-12 left-0 w-52 card !p-2 shadow-2xl z-50 space-y-1"></div>
+    </nav>
+  </div>
+</header>
+<main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8"></main>
+<footer class="text-center text-xs text-slate-500 py-6 border-t border-slate-200 dark:border-slate-800">Smart Memo © 2026 — الدفع بالمحفظة الإلكترونية فقط</footer>
+
+<div id="cfg" class="fixed inset-0 z-50 bg-black/70 hidden items-center justify-center p-4 overflow-y-auto">
+  <div class="card max-w-2xl w-full space-y-3 max-h-[92vh] overflow-y-auto">
+    <div class="flex justify-between"><h3 class="font-black">⚙️ إعداد Supabase</h3><button class="btn2" onclick="closeCfg()">✕</button></div>
+    <label class="text-xs font-bold">Project URL</label><input id="cfg-url" class="inp" dir="ltr" placeholder="https://xxxx.supabase.co">
+    <label class="text-xs font-bold">المفتاح العام (anon / publishable) — لا تضع service_role هنا أبدًا</label><input id="cfg-key" class="inp" dir="ltr">
+    <button class="btn" onclick="saveCfg()">حفظ واختبار الاتصال</button>
+    <ol class="list-decimal list-inside text-xs space-y-1 text-slate-600 dark:text-slate-300 pt-2">
+      <li>شغّل ملف <b>supabase-schema.sql</b> كاملًا في SQL Editor.</li>
+      <li>Authentication ← Providers ← Email: أغلق <b>Confirm email</b> (التسجيل يتم ببريد داخلي مشتق من الهاتف).</li>
+      <li>أنشئ حسابك من الموقع، ثم انسخ UUID حسابك من Authentication ← Users وشغّل أمر الترقية الموجود في آخر الملف (القسم 10).</li>
+      <li>تأكد من وجود bucket: <b>public-covers</b> و <b>private-products</b> (ينشئهما الملف تلقائيًا).</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+const WALLET='01105187060', $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n||0).toLocaleString('ar-EG')+' ج.م';
+const price=p=>p.discount_price!=null?p.discount_price:p.base_price;
+const LS=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+let sb=null, me=null, view='home', arg=null, busy=false, products=[], cart=LS('sm_cart',[]), adminTab='orders', quote=null, couponCode='';
+let F={q:'',type:'all',grade:''}, owned=new Set();
+const ownBtns=id=>`<span class="flex gap-1"><button class="btn !py-1.5" onclick="ownDl('${esc(id)}','view',this)">👁 عرض</button><button class="btn2" onclick="ownDl('${esc(id)}','dl',this)">⬇ تنزيل</button></span>`;
+function ownDl(id,mode,b){const p=products.find(x=>x.id===id);if(!p||!p.file_path)return toast('الملف غير متاح.',false);download(p.file_path,b,mode,encodeURIComponent(p.title))}
+
+function toast(m,ok=true){const t=$('#toast');t.textContent=m;t.className='fixed bottom-4 inset-x-4 sm:right-6 sm:left-auto sm:w-96 z-[60] rounded-2xl p-4 text-xs font-bold shadow-2xl border '+(ok?'bg-emerald-50 text-emerald-800 border-emerald-300':'bg-rose-50 text-rose-800 border-rose-300');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),4500)}
+function errMsg(e){const m=e?.message||String(e);const map=[['Invalid login','رقم الهاتف أو كلمة المرور غير صحيحة.'],['already registered','هذا الرقم مسجل بالفعل. سجّل الدخول.'],['profiles_phone_key','رقم الهاتف مسجل بالفعل.'],['Database error saving new user','تعذر إنشاء الحساب. تحقق من الاسم ورقم الهاتف.'],['Failed to fetch','تعذر الاتصال بالخادم. تحقق من الإنترنت وإعدادات الربط.'],['duplicate key','هذا الطلب أو المرجع مسجل بالفعل.'],['violates foreign key','لا يمكن الحذف: المنتج مرتبط بطلبات.'],['row-level security','ليست لديك صلاحية لهذه العملية.']];for(const[k,v]of map)if(m.includes(k))return v;return m}
+async function run(btn,fn){if(busy)return;busy=true;if(btn)btn.disabled=true;try{await fn()}catch(e){console.error(e);toast(errMsg(e),false)}finally{busy=false;if(btn)btn.disabled=false}}
+function needDb(){if(!sb){toast('اربط Supabase أولًا من زر الإعداد.',false);openCfg();return false}return true}
+function toggleDark(){document.documentElement.classList.toggle('dark');localStorage.setItem('sm_dark',document.documentElement.classList.contains('dark')?'1':'0')}
+if(localStorage.getItem('sm_dark')!=='0')document.documentElement.classList.add('dark');
+
+/* ---------- الإعداد والاتصال ---------- */
+function openCfg(){const c=LS('sm_cfg',{});$('#cfg-url').value=c.url||'';$('#cfg-key').value=c.key||'';$('#cfg').classList.replace('hidden','flex')}
+function closeCfg(){$('#cfg').classList.replace('flex','hidden')}
+const safeFetch=(u,o={})=>{if(o.headers&&typeof o.headers.entries==='function'&&!Array.isArray(o.headers))o={...o,headers:Object.fromEntries(o.headers.entries())};return fetch(u,o)};
+function mkClient(c){return window.supabase.createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true},global:{fetch:safeFetch}})}
+async function saveCfg(){const url=$('#cfg-url').value.trim().replace(/\/$/,''),key=$('#cfg-key').value.trim();
+  if(!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(url))return toast('رابط المشروع غير صحيح.',false);
+  if(/^sb_secret_/i.test(key))return toast('هذا مفتاح سري (secret). استخدم المفتاح القابل للنشر sb_publishable فقط.',false);
+  if(key.length<20||/service_role/i.test(atob((key.split('.')[1]||'').replace(/-/g,'+').replace(/_/g,'/')||'')))return toast('المفتاح غير صالح أو سري. استخدم المفتاح العام فقط.',false);
+  await run(null,async()=>{const t=mkClient({url,key});const{error}=await t.from('products').select('id').limit(1);if(error)throw new Error('فشل الاتصال: '+error.message);
+    localStorage.setItem('sm_cfg',JSON.stringify({url,key}));sb=t;closeCfg();toast('تم الاتصال بنجاح.');await boot()})}
+function setStatus(ok,txt){const b=$('#statusbar');b.className='px-4 py-2 text-xs font-bold flex flex-wrap items-center justify-between gap-2 border-b '+(ok?'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30':'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30');$('#status-text').textContent=txt}
+
+/* ---------- المصادقة ---------- */
+const mail=p=>p+'@users.smartmemo.app';
+async function loadMe(){me=null;if(!sb)return;const{data:{session}}=await sb.auth.getSession();
+  if(session){const{data}=await sb.from('profiles').select('*').eq('id',session.user.id).maybeSingle();if(data&&data.is_active)me=data;else if(data&&!data.is_active){await sb.auth.signOut();toast('هذا الحساب معطّل.',false)}}
+  owned=new Set();
+  if(me){try{const{data}=await sb.from('product_entitlements').select('product_id').eq('user_id',me.id);owned=new Set((data||[]).map(x=>x.product_id))}catch(e){console.error(e)}}
+  $('#nav-auth').textContent=me?('👤 '+me.full_name.split(' ')[0]):'دخول'}
+async function doLogin(e,f){e.preventDefault();if(!needDb())return;const phone=f.phone.value.trim();
+  if(!/^01[0-9]{9}$/.test(phone))return toast('رقم الهاتف يجب أن يكون 11 رقمًا ويبدأ بـ 01.',false);
+  await run(f.btn,async()=>{const{error}=await sb.auth.signInWithPassword({email:mail(phone),password:f.pw.value});if(error)throw error;await loadMe();toast('تم تسجيل الدخول.');go('home')})}
+async function doRegister(e,f){e.preventDefault();if(!needDb())return;
+  const names=['n1','n2','n3','n4'].map(k=>f[k].value.trim());const phone=f.phone.value.trim();
+  if(names.some(n=>n.length<2))return toast('أدخل الاسم الرباعي كاملًا.',false);
+  if(!/^01[0-9]{9}$/.test(phone))return toast('رقم الهاتف غير صحيح.',false);
+  if(f.pw.value.length<8)return toast('كلمة المرور 8 أحرف على الأقل.',false);
+  if(f.pw.value!==f.pw2.value)return toast('كلمتا المرور غير متطابقتين.',false);
+  await run(f.btn,async()=>{const{data,error}=await sb.auth.signUp({email:mail(phone),password:f.pw.value,options:{data:{full_name:names.join(' '),phone}}});if(error)throw error;
+    if(!data.session)throw new Error('فعّل الدخول المباشر: أغلق Confirm email من إعدادات Supabase ثم سجّل الدخول.');await loadMe();toast('تم إنشاء حسابك.');go('home')})}
+async function doLogout(){await sb.auth.signOut();me=null;await loadMe();toast('تم تسجيل الخروج.');go('home')}
+
+/* ---------- قائمة الحساب ---------- */
+function accClick(e){e.stopPropagation();if(!me)return go('auth');const m=$('#acc-menu');
+  m.innerHTML=`<div class="px-2 py-1 text-[11px] text-slate-500 border-b border-slate-200 dark:border-slate-700 mb-1">${esc(me.full_name)}</div>
+  <button class="btn2 w-full text-right" onclick="closeAcc();go('auth')">👤 حسابي</button>
+  <button class="btn2 w-full text-right" onclick="closeAcc();go('library')">📚 مكتبتي</button>
+  <button class="btn2 w-full text-right" onclick="closeAcc();go('catalog')">🛍️ الكتب والمذكرات</button>
+  ${me.role==='admin'?`<button class="btn2 w-full text-right !bg-pur !text-white !border-0" onclick="closeAcc();go('admin')">⚙️ الإدارة</button>`:''}
+  <button class="btn2 w-full text-right !text-rose-600" onclick="closeAcc();doLogout()">🚪 تسجيل الخروج</button>`;
+  m.classList.toggle('hidden')}
+function closeAcc(){$('#acc-menu').classList.add('hidden')}
+document.addEventListener('click',e=>{if(!e.target.closest('#acc-menu'))closeAcc()});
+
+/* ---------- المنتجات والسلة ---------- */
+async function loadProducts(){if(!sb)return;const{data,error}=await sb.from('products').select('*').eq('status','published').order('created_at',{ascending:false});if(error)throw error;products=data}
+const coverUrl=p=>p.cover_path?sb.storage.from('public-covers').getPublicUrl(p.cover_path).data.publicUrl:null;
+function saveCart(){localStorage.setItem('sm_cart',JSON.stringify(cart));$('#cart-n').textContent=cart.length}
+function addCart(id){if(owned.has(id))return toast('لقد اشتريت هذا المنتج بالفعل.',false);if(cart.includes(id))return toast('المنتج في السلة بالفعل.',false);cart.push(id);saveCart();toast('أضيف إلى السلة.')}
+function rmCart(id){cart=cart.filter(x=>x!==id);quote=null;saveCart();go('cart')}
+function card(p){const c=coverUrl(p);return `<div class="card flex flex-col gap-2">${c?`<img src="${esc(c)}" alt="" class="w-full h-40 object-cover rounded-xl">`:'<div class="h-40 rounded-xl bg-gradient-to-br from-navy to-brand flex items-center justify-center text-cyan2 text-3xl font-black">SM</div>'}
+<h3 class="font-extrabold text-sm">${esc(p.title)}</h3><p class="text-[11px] text-slate-500">${esc(p.subject)} • ${esc(p.grade)}</p><p class="text-xs">${esc(p.short_description)}</p>
+<div class="mt-auto flex items-center justify-between"><span class="font-black text-brand dark:text-cyan2">${fmt(price(p))}${p.discount_price!=null?` <s class="text-[10px] text-slate-400">${fmt(p.base_price)}</s>`:''}</span>
+${owned.has(p.id)?ownBtns(p.id):`<span class="flex gap-1"><button class="btn2" onclick="go('product','${esc(p.id)}')">تفاصيل</button><button class="btn !py-1.5" onclick="addCart('${esc(p.id)}')">أضف</button></span>`}</div></div>`}
+const empty=(t)=>`<div class="card text-center text-sm text-slate-500 py-10 col-span-full">${esc(t)}</div>`;
+
+/* ---------- العرض ---------- */
+const V={};
+V.home=()=>`<section class="rounded-3xl bg-navy text-white p-8 sm:p-14 mb-10"><h1 class="text-3xl sm:text-5xl font-black leading-tight">كل كتبك ومذكراتك… <span class="text-cyan2">في مكان واحد.</span></h1><p class="text-slate-300 text-sm mt-3 max-w-xl">اختر مذكراتك، حوّل بالمحفظة الإلكترونية، وحمّل ملفاتك من مكتبتك فور اعتماد الدفع.</p>
+<form class="mt-5 flex bg-white rounded-2xl p-1.5 max-w-xl" onsubmit="event.preventDefault();F.q=this.q.value;go('catalog')"><input name="q" class="w-full px-3 text-slate-900 text-sm outline-none" placeholder="ابحث باسم المذكرة أو المادة..."><button class="btn">بحث</button></form></section>
+<h2 class="font-black text-xl mb-4">أحدث المنتجات</h2><div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">${products.slice(0,8).map(card).join('')||empty(sb?'لا توجد منتجات منشورة بعد.':'اربط قاعدة البيانات لعرض المنتجات.')}</div>`;
+V.catalog=()=>{const l=products.filter(p=>(F.type==='all'||p.type===F.type)&&(!F.grade||(p.grade+' '+p.stage+' '+p.subject).includes(F.grade))&&(!F.q||[p.title,p.subject,p.author,p.short_description].join(' ').includes(F.q)));
+return `<h1 class="font-black text-2xl mb-4">الكتب والمذكرات</h1><div class="grid lg:grid-cols-4 gap-6"><aside class="card space-y-3 h-fit"><input class="inp" placeholder="بحث..." value="${esc(F.q)}" oninput="F.q=this.value;redrawCat()"><select class="inp" onchange="F.type=this.value;redrawCat()"><option value="all">كل الأنواع</option><option value="study_memo_pdf" ${F.type==='study_memo_pdf'?'selected':''}>مذكرة PDF</option><option value="ebook_pdf" ${F.type==='ebook_pdf'?'selected':''}>كتاب PDF</option></select><input class="inp" placeholder="الصف / المرحلة / المادة" value="${esc(F.grade)}" oninput="F.grade=this.value;redrawCat()"><button class="btn2 w-full" onclick="F={q:'',type:'all',grade:''};go('catalog')">إعادة ضبط</button></aside><div id="cat-grid" class="lg:col-span-3 grid sm:grid-cols-2 xl:grid-cols-3 gap-5">${l.map(card).join('')||empty('لا توجد نتائج مطابقة.')}</div></div>`};
+function redrawCat(){const l=products.filter(p=>(F.type==='all'||p.type===F.type)&&(!F.grade||(p.grade+' '+p.stage+' '+p.subject).includes(F.grade))&&(!F.q||[p.title,p.subject,p.author,p.short_description].join(' ').includes(F.q)));$('#cat-grid').innerHTML=l.map(card).join('')||empty('لا توجد نتائج مطابقة.')}
+V.product=()=>{const p=products.find(x=>x.id===arg);if(!p)return empty('المنتج غير موجود.');return `<button class="btn2 mb-4" onclick="go('catalog')">← الرجوع</button><div class="card max-w-3xl space-y-3"><h1 class="font-black text-2xl">${esc(p.title)}</h1><p class="text-xs text-slate-500">${esc(p.stage)} • ${esc(p.grade)} • ${esc(p.subject)} • ${esc(p.semester)} • ${esc(p.author)}</p><p class="text-sm whitespace-pre-line">${esc(p.full_description||p.short_description)}</p><div class="font-black text-xl text-brand dark:text-cyan2">${fmt(price(p))}</div>${owned.has(p.id)?ownBtns(p.id):`<button class="btn" onclick="addCart('${esc(p.id)}')">أضف إلى السلة</button>`}</div>`};
+V.cart=()=>{const items=cart.map(id=>products.find(p=>p.id===id)).filter(Boolean);
+return `<h1 class="font-black text-2xl mb-4">السلة وإتمام الطلب</h1><div class="grid lg:grid-cols-5 gap-6"><div class="lg:col-span-3 space-y-3">${items.map(p=>`<div class="card flex justify-between items-center"><div><b class="text-sm">${esc(p.title)}</b><div class="text-xs text-slate-500">${fmt(price(p))}</div></div><button class="btn2" onclick="rmCart('${esc(p.id)}')">إزالة</button></div>`).join('')||empty('السلة فارغة.')}</div>
+<div class="lg:col-span-2 card space-y-3 h-fit"><div class="flex gap-2"><input id="cpn" class="inp uppercase" placeholder="كود الخصم" value="${esc(couponCode)}"><button class="btn2" onclick="doQuote(this)">تطبيق</button></div>
+<div class="text-sm space-y-1"><div class="flex justify-between"><span>قبل الخصم</span><b>${fmt(quote?quote.subtotal:items.reduce((s,p)=>s+Number(price(p)),0))}</b></div><div class="flex justify-between text-emerald-600"><span>الخصم</span><b>${fmt(quote?quote.discount:0)}</b></div><div class="flex justify-between font-black border-t pt-2"><span>الإجمالي</span><span class="text-brand dark:text-cyan2">${fmt(quote?quote.total:items.reduce((s,p)=>s+Number(price(p)),0))}</span></div></div>
+<div class="rounded-xl bg-slate-100 dark:bg-slate-800 p-3 space-y-2 text-xs"><b>الدفع بالمحفظة الإلكترونية</b><div class="flex justify-between items-center bg-white dark:bg-slate-900 rounded-lg p-2"><span class="font-mono font-black text-brand dark:text-cyan2">${WALLET}</span><button class="btn2" onclick="navigator.clipboard.writeText('${WALLET}').then(()=>toast('تم نسخ الرقم.'))">نسخ</button></div><p class="text-slate-500">حوّل الإجمالي أعلاه (بعد تطبيق الكود) ثم أدخل مرجع التحويل. لا يُمنح التحميل إلا بعد مراجعة المدير.</p><input id="ref" class="inp" placeholder="رقم مرجع التحويل *"></div>
+<button class="btn w-full" onclick="submitOrder(this)">إرسال الطلب للمراجعة</button></div></div>`};
+async function doQuote(b){if(!me)return toast('سجّل الدخول أولًا.',false);if(!cart.length)return;couponCode=$('#cpn').value.trim();await run(b,async()=>{const{data,error}=await sb.rpc('preview_cart',{p_product_ids:cart,p_coupon_code:couponCode||null});if(error)throw error;quote=data;go('cart');toast(couponCode?'تم تطبيق الكود.':'تم تحديث السعر.')})}
+async function submitOrder(b){if(!needDb())return;if(!me)return toast('سجّل الدخول لإتمام الطلب.',false)||go('auth');if(!cart.length)return toast('السلة فارغة.',false);const ref=$('#ref').value.trim();if(ref.length<4)return toast('أدخل رقم مرجع التحويل.',false);
+  await run(b,async()=>{const{error}=await sb.rpc('create_order',{p_product_ids:cart,p_transfer_ref:ref,p_coupon_code:couponCode||null});if(error)throw error;cart=[];quote=null;couponCode='';saveCart();toast('تم إرسال الطلب وهو الآن قيد المراجعة.');go('library')})}
+
+const ST={under_manual_review:['قيد المراجعة','bg-amber-100 text-amber-800'],paid:['مقبول','bg-emerald-100 text-emerald-800'],rejected:['مرفوض','bg-rose-100 text-rose-800']};
+const badge=s=>`<span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${ST[s][1]}">${ST[s][0]}</span>`;
+V.library=()=>!me?V.auth():`<div class="flex justify-between mb-4"><h1 class="font-black text-2xl">مكتبتي وطلباتي</h1><button class="btn2" onclick="go('library')">🔄 تحديث</button></div><h2 class="font-extrabold mb-2">المتاح للتنزيل</h2><div id="ents" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">...</div><h2 class="font-extrabold mb-2">سجل الطلبات</h2><div id="ords" class="space-y-3">...</div>`;
+async function afterLibrary(){if(!me)return;const[e,o]=await Promise.all([sb.from('product_entitlements').select('id,products(id,title,file_path,subject,grade)').eq('user_id',me.id),sb.from('orders').select('*,order_items(product_title_snapshot,price_at_purchase)').eq('user_id',me.id).order('created_at',{ascending:false})]);
+  if(e.error||o.error)throw e.error||o.error;
+  $('#ents').innerHTML=e.data.length?e.data.map(x=>`<div class="card space-y-2"><b class="text-sm">${esc(x.products.title)}</b><p class="text-[11px] text-slate-500">${esc(x.products.subject)} • ${esc(x.products.grade)}</p><div class="flex gap-2"><button class="btn flex-1" onclick="download('${esc(x.products.file_path)}',this,'view')">👁 عرض</button><button class="btn2 flex-1" onclick="download('${esc(x.products.file_path)}',this,'dl','${encodeURIComponent(x.products.title)}')">⬇ تنزيل</button></div></div>`).join(''):empty('لا توجد منتجات معتمدة بعد.');
+  $('#ords').innerHTML=o.data.length?o.data.map(r=>`<div class="card text-xs space-y-1"><div class="flex justify-between"><b>${new Date(r.created_at).toLocaleDateString('ar-EG')} — ${fmt(r.total_amount)}</b>${badge(r.status)}</div><div class="text-slate-500">${r.order_items.map(i=>esc(i.product_title_snapshot)).join('، ')}</div><div>المرجع: <span dir="ltr">${esc(r.transfer_reference)}</span></div>${r.rejection_reason?`<div class="text-rose-600">سبب الرفض: ${esc(r.rejection_reason)}</div>`:''}</div>`).join(''):empty('لا توجد طلبات.')}
+async function download(path,b,mode,title){await run(b,async()=>{
+  const opt=mode==='dl'?{download:decodeURIComponent(title||'file').replace(/[\\/:*?"<>|]/g,'')+'.pdf'}:undefined;
+  const{data,error}=await sb.storage.from('private-products').createSignedUrl(path,120,opt);if(error)throw new Error('لا تملك صلاحية هذا الملف.');
+  if(mode==='dl'){const a=document.createElement('a');a.href=data.signedUrl;a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}
+  else window.open(data.signedUrl,'_blank','noopener')})}
+
+V.auth=()=>me?`<div class="card max-w-md mx-auto space-y-3"><h1 class="font-black text-xl">حسابي</h1><p class="text-sm"><b>${esc(me.full_name)}</b><br><span class="text-slate-500" dir="ltr">${esc(me.phone)}</span></p><p class="text-xs">النوع: ${me.role==='admin'?'مدير':'طالب'}</p><button class="btn !bg-rose-600" onclick="doLogout()">تسجيل الخروج</button></div>`
+:`<div class="card max-w-md mx-auto space-y-4"><div class="flex gap-2"><button class="btn flex-1" id="t-l" onclick="authTab('l')">دخول</button><button class="btn2 flex-1" id="t-r" onclick="authTab('r')">حساب جديد</button></div>
+<form id="f-l" class="space-y-3" onsubmit="doLogin(event,this)"><input name="phone" class="inp" type="tel" placeholder="رقم الهاتف" required><input name="pw" class="inp" type="password" placeholder="كلمة المرور" required><button name="btn" class="btn w-full">تسجيل الدخول</button></form>
+<form id="f-r" class="space-y-3 hidden" onsubmit="doRegister(event,this)"><div class="grid grid-cols-2 gap-2"><input name="n1" class="inp" placeholder="الاسم الأول" required><input name="n2" class="inp" placeholder="الثاني" required><input name="n3" class="inp" placeholder="الثالث" required><input name="n4" class="inp" placeholder="الرابع" required></div><input name="phone" class="inp" type="tel" placeholder="رقم الهاتف 01xxxxxxxxx" required><input name="pw" class="inp" type="password" minlength="8" placeholder="كلمة المرور (8+)" required><input name="pw2" class="inp" type="password" placeholder="تأكيد كلمة المرور" required><button name="btn" class="btn w-full">إنشاء الحساب</button></form></div>`;
+function authTab(t){$('#f-l').classList.toggle('hidden',t!=='l');$('#f-r').classList.toggle('hidden',t!=='r');$('#t-l').className=t==='l'?'btn flex-1':'btn2 flex-1';$('#t-r').className=t==='r'?'btn flex-1':'btn2 flex-1'}
+
+/* ---------- لوحة الإدارة (الصلاحية الحقيقية من قاعدة البيانات + RLS) ---------- */
+const isAdmin=()=>me&&me.role==='admin';
+V.admin=()=>!isAdmin()?empty('هذه الصفحة للمدير فقط.'):`<h1 class="font-black text-2xl mb-3">لوحة الإدارة</h1><div id="kpis" class="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5"></div><div class="flex flex-wrap gap-2 mb-5">${[['orders','الطلبات'],['products','المنتجات'],['students','الطلاب'],['coupons','الكوبونات']].map(([k,l])=>`<button class="${adminTab===k?'btn':'btn2'}" onclick="adminTab='${k}';go('admin')">${l}</button>`).join('')}</div><div id="admin-body">...</div>`;
+async function afterAdmin(){if(!isAdmin())return;
+  try{const{data:s,error}=await sb.rpc('admin_stats');if(error)throw error;
+    const k=[['الطلاب',s.students],['منشور',s.published_products],['الطلبات',s.orders_total],['معلّقة',s.orders_pending],['مقبول/مرفوض',s.orders_paid+' / '+s.orders_rejected],['إيراد مؤكد',fmt(s.confirmed_revenue)]];
+    $('#kpis').innerHTML=k.map(([l,v])=>`<div class="card !p-3"><div class="text-[11px] text-slate-500">${l}</div><div class="font-black">${esc(v)}</div></div>`).join('');
+    await A[adminTab]()}
+  catch(e){console.error(e);$('#admin-body').innerHTML=`<div class="card text-xs text-rose-600" dir="ltr">${esc(e.message||e)}</div>`}}
+const A={};
+A.orders=async()=>{
+  const{data:o,error}=await sb.from('orders').select('*').order('created_at',{ascending:false}).limit(100);if(error)throw error;
+  const ids=o.map(x=>x.id),uids=[...new Set(o.map(x=>x.user_id))];
+  const[it,pf]=await Promise.all([ids.length?sb.from('order_items').select('order_id,product_title_snapshot,price_at_purchase').in('order_id',ids):{data:[]},uids.length?sb.from('profiles').select('id,full_name,phone').in('id',uids):{data:[]}]);
+  if(it.error)throw it.error;if(pf.error)throw pf.error;
+  const data=o.map(x=>({...x,order_items:(it.data||[]).filter(i=>i.order_id===x.id),profiles:(pf.data||[]).find(p=>p.id===x.user_id)}));
+  $('#admin-body').innerHTML=data.length?data.map(o=>`<div class="card text-xs space-y-1 mb-3"><div class="flex justify-between"><b>${esc(o.profiles?.full_name)} — <span dir="ltr">${esc(o.profiles?.phone)}</span></b>${badge(o.status)}</div><div>${o.order_items.map(i=>esc(i.product_title_snapshot)+' ('+fmt(i.price_at_purchase)+')').join('، ')}</div><div>الإجمالي: <b>${fmt(o.total_amount)}</b>${o.coupon_code_snapshot?' • كوبون '+esc(o.coupon_code_snapshot):''} • المرجع: <span dir="ltr">${esc(o.transfer_reference)}</span></div>${o.status==='under_manual_review'?`<div class="flex gap-2 pt-1"><button class="btn" onclick="review('${esc(o.id)}',true,this)">قبول ومنح الوصول</button><button class="btn2 !text-rose-600" onclick="review('${esc(o.id)}',false,this)">رفض</button></div>`:o.rejection_reason?`<div class="text-rose-600">السبب: ${esc(o.rejection_reason)}</div>`:''}</div>`).join(''):empty('لا توجد طلبات.')};
+async function review(id,ok,b){let r=null;if(!ok){r=prompt('سبب الرفض:');if(!r)return}else if(!confirm('تأكيد وصول المبلغ إلى المحفظة وقبول الطلب؟'))return;
+  await run(b,async()=>{const{error}=await sb.rpc('review_order',{p_order_id:id,p_approve:ok,p_reason:r});if(error)throw error;toast('تمت المعالجة.');go('admin')})}
+A.products=async()=>{const{data,error}=await sb.from('products').select('*').order('created_at',{ascending:false});if(error)throw error;window._prods=data;
+  $('#admin-body').innerHTML=`<div class="grid lg:grid-cols-5 gap-5"><form class="card lg:col-span-2 space-y-2 text-xs h-fit" onsubmit="saveProduct(event,this)"><b id="pf-title">إضافة مذكرة</b><input name="eid" type="hidden"><input name="title" class="inp" placeholder="العنوان *" required>
+<div class="grid grid-cols-2 gap-2"><select name="type" class="inp"><option value="study_memo_pdf">مذكرة PDF</option><option value="ebook_pdf">كتاب PDF</option></select><select name="status" class="inp"><option value="published">منشور</option><option value="draft">مسودة</option><option value="archived">مؤرشف</option></select><input name="stage" class="inp" value="المرحلة الثانوية" required><input name="grade" class="inp" value="الصف الثاني الثانوي" required><input name="subject" class="inp" placeholder="المادة *" required><input name="semester" class="inp" value="الفصل الدراسي الأول" required></div><input name="author" class="inp" placeholder="المؤلف *" required>
+<div class="grid grid-cols-2 gap-2"><input name="base" class="inp" type="number" min="0" step="0.5" placeholder="السعر *" required><input name="disc" class="inp" type="number" min="0" step="0.5" placeholder="سعر الخصم"></div><input name="short" class="inp" placeholder="وصف مختصر *" required><textarea name="full" rows="2" class="inp" placeholder="الوصف الكامل"></textarea>
+<label>الغلاف (صورة ≤ 3MB)</label><input name="cover" type="file" accept="image/jpeg,image/png,image/webp"><label>ملف PDF * (≤ 50MB)</label><input name="pdf" type="file" accept="application/pdf" required><button name="btn" class="btn w-full">رفع وحفظ</button></form>
+<div class="lg:col-span-3 space-y-2">${data.map(p=>`<div class="card !p-3 flex flex-wrap items-center justify-between gap-2 text-xs"><div><b>${esc(p.title)}</b><div class="text-slate-500">${fmt(price(p))} • مبيعات ${p.sales_count}</div></div><div class="flex gap-1"><select class="inp !w-auto" onchange="setStatus('${esc(p.id)}',this.value)">${['published','draft','archived'].map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${{published:'منشور',draft:'مسودة',archived:'مؤرشف'}[s]}</option>`).join('')}</select><button class="btn2" onclick="editProduct('${esc(p.id)}')">تعديل</button><button class="btn2" onclick="previewProduct('${esc(p.id)}')">معاينة</button><button class="btn2 !text-rose-600" onclick="delProduct('${esc(p.id)}','${esc(p.file_path||'')}','${esc(p.cover_path||'')}')">حذف</button></div></div>`).join('')||empty('لا توجد منتجات.')}</div></div>`};
+async function setStatus(id,s){await run(null,async()=>{const{error}=await sb.from('products').update({status:s}).eq('id',id);if(error)throw error;await loadProducts();toast('تم التحديث.')})}
+async function delProduct(id,fp,cp){if(!confirm('حذف المنتج نهائيًا؟'))return;await run(null,async()=>{const{error}=await sb.from('products').delete().eq('id',id);if(error)throw error;if(fp)await sb.storage.from('private-products').remove([fp]);if(cp)await sb.storage.from('public-covers').remove([cp]);await loadProducts();toast('تم الحذف.');go('admin')})}
+A.students=async()=>{const{data,error}=await sb.from('profiles').select('*').eq('role','customer').order('created_at',{ascending:false});if(error)throw error;window._st=data;
+  $('#admin-body').innerHTML=`<input class="inp mb-3" placeholder="بحث بالاسم أو الهاتف" oninput="drawStudents(this.value)"><div id="st-list" class="space-y-2"></div>`;drawStudents('')};
+function drawStudents(q){const l=(window._st||[]).filter(s=>!q||s.full_name.includes(q)||s.phone.includes(q));$('#st-list').innerHTML=l.map(s=>`<div class="card !p-3 flex flex-wrap justify-between items-center gap-2 text-xs"><div><b>${esc(s.full_name)}</b> <span dir="ltr" class="text-slate-500">${esc(s.phone)}</span></div><div class="flex gap-1"><button class="btn2" onclick="resetPw('${esc(s.id)}')">كلمة مرور جديدة</button><button class="btn2" onclick="studentOrders('${esc(s.id)}')">طلباته</button><button class="btn2" onclick="toggleStudent('${esc(s.id)}',${!s.is_active})">${s.is_active?'تعطيل':'تفعيل'}</button></div></div>`).join('')||empty('لا يوجد طلاب.')}
+async function studentOrders(id){const{data,error}=await sb.from('orders').select('total_amount,status,created_at,order_items(product_title_snapshot)').eq('user_id',id);if(error)return toast(errMsg(error),false);alert(data.length?data.map(o=>new Date(o.created_at).toLocaleDateString('ar-EG')+' | '+ST[o.status][0]+' | '+o.total_amount+' ج.م | '+o.order_items.map(i=>i.product_title_snapshot).join('، ')).join('\n'):'لا توجد طلبات.')}
+async function toggleStudent(id,v){await run(null,async()=>{const{error}=await sb.from('profiles').update({is_active:v}).eq('id',id);if(error)throw error;toast('تم التحديث.');go('admin')})}
+A.coupons=async()=>{const{data,error}=await sb.from('coupons').select('*').order('created_at',{ascending:false});if(error)throw error;
+  $('#admin-body').innerHTML=`<div class="grid lg:grid-cols-5 gap-5"><form class="card lg:col-span-2 space-y-2 text-xs h-fit" onsubmit="saveCoupon(event,this)"><b>كود خصم جديد</b><input name="code" class="inp uppercase" placeholder="CODE *" required pattern="[A-Za-z0-9_-]{3,20}"><div class="grid grid-cols-2 gap-2"><select name="type" class="inp"><option value="percentage">نسبة %</option><option value="fixed">مبلغ ثابت</option></select><input name="val" class="inp" type="number" min="1" step="0.5" placeholder="القيمة *" required><input name="min" class="inp" type="number" min="0" value="0" placeholder="حد أدنى"><input name="lim" class="inp" type="number" min="1" placeholder="عدد الاستخدامات"><input name="start" class="inp" type="date"><input name="exp" class="inp" type="date" required></div><button name="btn" class="btn w-full">حفظ</button></form>
+<div class="lg:col-span-3 space-y-2">${data.map(c=>`<div class="card !p-3 flex flex-wrap justify-between items-center gap-2 text-xs"><div><b dir="ltr">${esc(c.code)}</b> — ${c.discount_type==='percentage'?c.discount_value+'%':fmt(c.discount_value)}<div class="text-slate-500">استُخدم ${c.used_count}${c.usage_limit?'/'+c.usage_limit:''} • ينتهي ${new Date(c.expires_at).toLocaleDateString('ar-EG')}</div></div><button class="btn2" onclick="toggleCoupon('${esc(c.id)}',${!c.is_active})">${c.is_active?'تعطيل':'تفعيل'}</button></div>`).join('')||empty('لا توجد كوبونات.')}</div></div>`};
+async function saveCoupon(e,f){e.preventDefault();const v=+f.val.value;if(f.type.value==='percentage'&&v>100)return toast('النسبة لا تتجاوز 100.',false);
+  await run(f.btn,async()=>{const{error}=await sb.from('coupons').insert({code:f.code.value.trim().toUpperCase(),discount_type:f.type.value,discount_value:v,min_order_amount:+f.min.value||0,usage_limit:f.lim.value?+f.lim.value:null,starts_at:f.start.value?new Date(f.start.value).toISOString():new Date().toISOString(),expires_at:new Date(f.exp.value+'T23:59:59').toISOString()});if(error)throw error;toast('تم حفظ الكوبون.');go('admin')})}
+async function toggleCoupon(id,v){await run(null,async()=>{const{error}=await sb.from('coupons').update({is_active:v}).eq('id',id);if(error)throw error;go('admin')})}
+
+
+/* ---------- تعديل ومعاينة المنتج + إعادة تعيين كلمة المرور ---------- */
+function previewProduct(id){const p=(window._prods||[]).find(x=>x.id===id);if(!p)return;const c=coverUrl(p);$('#app').innerHTML=`<button class="btn2 mb-4" onclick="go('admin')">← رجوع للإدارة</button><div class="card max-w-3xl space-y-3"><span class="text-xs font-bold text-amber-600">معاينة — الحالة: ${esc(p.status)}</span>${c?`<img src="${esc(c)}" alt="" class="w-full max-h-64 object-cover rounded-xl">`:''}<h1 class="font-black text-2xl">${esc(p.title)}</h1><p class="text-xs text-slate-500">${esc(p.stage)} • ${esc(p.grade)} • ${esc(p.subject)} • ${esc(p.semester)} • ${esc(p.author)}</p><p class="text-sm whitespace-pre-line">${esc(p.full_description||p.short_description)}</p><div class="font-black text-xl text-brand dark:text-cyan2">${fmt(price(p))}</div></div>`}
+function editProduct(id){const p=(window._prods||[]).find(x=>x.id===id),f=$('form[onsubmit^="saveProduct"]');if(!p||!f)return;
+  f.eid.value=p.id;$('#pf-title').textContent='تعديل: '+p.title;for(const[k,v]of Object.entries({title:p.title,type:p.type,status:p.status,stage:p.stage,grade:p.grade,subject:p.subject,semester:p.semester,author:p.author,base:p.base_price,disc:p.discount_price??'',short:p.short_description,full:p.full_description||''}))f[k].value=v;
+  f.pdf.required=false;f.btn.textContent='حفظ التعديلات (الملفات اختيارية)';f.scrollIntoView({behavior:'smooth'})}
+async function saveProduct(e,f){e.preventDefault();const eid=f.eid.value,pdf=f.pdf.files[0],cv=f.cover.files[0];
+  if(!eid&&!pdf)return toast('ارفع ملف PDF.',false);
+  if(pdf&&(pdf.type!=='application/pdf'||!/\.pdf$/i.test(pdf.name)||pdf.size>50*1048576))return toast('الملف يجب أن يكون PDF حتى 50MB.',false);
+  if(cv&&(!/^image\/(jpeg|png|webp)$/.test(cv.type)||cv.size>3*1048576))return toast('الغلاف: صورة JPG/PNG/WEBP حتى 3MB.',false);
+  const base=+f.base.value,disc=f.disc.value===''?null:+f.disc.value;if(disc!==null&&disc>base)return toast('سعر الخصم أكبر من السعر الأصلي.',false);
+  await run(f.btn,async()=>{const old=eid?(window._prods||[]).find(x=>x.id===eid):null,id=eid||crypto.randomUUID(),ver=Date.now();
+    const row={title:f.title.value.trim(),type:f.type.value,status:f.status.value,stage:f.stage.value.trim(),grade:f.grade.value.trim(),subject:f.subject.value.trim(),semester:f.semester.value.trim(),author:f.author.value.trim(),base_price:base,discount_price:disc,short_description:f.short.value.trim(),full_description:f.full.value.trim()||null};
+    let fp=old?.file_path,cp=old?.cover_path,up=[];
+    if(pdf){fp=id+'-'+ver+'.pdf';const r=await sb.storage.from('private-products').upload(fp,pdf,{contentType:'application/pdf'});if(r.error)throw r.error;up.push(['private-products',fp])}
+    if(cv){cp=id+'-'+ver+'.'+cv.type.split('/')[1];const r=await sb.storage.from('public-covers').upload(cp,cv,{contentType:cv.type});if(r.error){for(const[b,p]of up)await sb.storage.from(b).remove([p]);throw r.error}up.push(['public-covers',cp])}
+    Object.assign(row,{file_path:fp,cover_path:cp});
+    const{error}=eid?await sb.from('products').update(row).eq('id',id):await sb.from('products').insert({id,...row});
+    if(error){for(const[b,p]of up)await sb.storage.from(b).remove([p]);throw error}
+    if(old){if(pdf&&old.file_path)await sb.storage.from('private-products').remove([old.file_path]);if(cv&&old.cover_path)await sb.storage.from('public-covers').remove([old.cover_path])}
+    toast(eid?'تم حفظ التعديلات.':'تم حفظ المذكرة.');await loadProducts();go('admin')})}
+async function resetPw(id){const pw=prompt('كلمة المرور الجديدة للطالب (8 أحرف على الأقل):');if(!pw)return;if(pw.length<8)return toast('كلمة المرور قصيرة.',false);
+  await run(null,async()=>{const{data,error}=await sb.functions.invoke('admin-reset-password',{body:{user_id:id,new_password:pw}});if(error)throw error;if(data?.error)throw new Error(data.error);toast('تم تغيير كلمة المرور. أبلغ الطالب بها.')})}
+
+/* ---------- التنقل والإقلاع ---------- */
+async function go(v,a){view=v;arg=a||null;window.scrollTo(0,0);const app=$('#app');
+  if(['admin','library'].includes(v)&&!me&&sb){await loadMe()}
+  app.innerHTML=(V[v]||V.home)();
+  try{if(v==='library')await afterLibrary();if(v==='admin')await afterAdmin()}catch(e){toast(errMsg(e),false)}}
+async function boot(){saveCart();const c=LS('sm_cfg',null);
+  if(c&&!sb){try{sb=mkClient(c)}catch{}}
+  if(sb){try{await loadMe();setStatus(true,'متصل بقاعدة البيانات');await loadProducts();cart=cart.filter(id=>products.some(p=>p.id===id));saveCart()}catch(e){setStatus(false,'فشل الاتصال: '+errMsg(e))}}
+  else setStatus(false,'غير متصل: افتح «الإعداد والربط» وأدخل بيانات Supabase.');
+  go(view,arg)}
+boot();
+</script>
+</body></html>

@@ -11,7 +11,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900 dark:bg-navy dark:text-slate-100 min-h-screen flex flex-col">
 <div id="toast" class="fixed bottom-4 inset-x-4 sm:right-6 sm:left-auto sm:w-96 z-[60] hidden rounded-2xl p-4 text-xs font-bold shadow-2xl border"></div>
-<div id="statusbar" class="px-4 py-2 text-xs font-bold flex flex-wrap items-center justify-between gap-2 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-b border-amber-500/30">
+<div id="statusbar" style="display:none" class="px-4 py-2 text-xs font-bold flex flex-wrap items-center justify-between gap-2 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-b border-amber-500/30">
   <span id="status-text">غير متصل بقاعدة البيانات</span>
   <button class="btn" onclick="openCfg()">⚙️ الإعداد والربط</button>
 </div>
@@ -47,6 +47,7 @@
 </div>
 
 <script>
+const DEFAULT_CFG={url:'',key:''}; /* ضع هنا Project URL والمفتاح العام ليتصل كل الزوار تلقائيًا */
 const WALLET='01105187060', $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>Number(n||0).toLocaleString('ar-EG')+' ج.م';
@@ -183,8 +184,8 @@ A.products=async()=>{const{data,error}=await sb.from('products').select('*').ord
 <div class="grid grid-cols-2 gap-2"><select name="type" class="inp"><option value="study_memo_pdf">مذكرة PDF</option><option value="ebook_pdf">كتاب PDF</option></select><select name="status" class="inp"><option value="published">منشور</option><option value="draft">مسودة</option><option value="archived">مؤرشف</option></select><input name="stage" class="inp" value="المرحلة الثانوية" required><input name="grade" class="inp" value="الصف الثاني الثانوي" required><input name="subject" class="inp" placeholder="المادة *" required><input name="semester" class="inp" value="الفصل الدراسي الأول" required></div><input name="author" class="inp" placeholder="المؤلف *" required>
 <div class="grid grid-cols-2 gap-2"><input name="base" class="inp" type="number" min="0" step="0.5" placeholder="السعر *" required><input name="disc" class="inp" type="number" min="0" step="0.5" placeholder="سعر الخصم"></div><input name="short" class="inp" placeholder="وصف مختصر *" required><textarea name="full" rows="2" class="inp" placeholder="الوصف الكامل"></textarea>
 <label>الغلاف (صورة ≤ 3MB)</label><input name="cover" type="file" accept="image/jpeg,image/png,image/webp"><label>ملف PDF * (≤ 50MB)</label><input name="pdf" type="file" accept="application/pdf" required><button name="btn" class="btn w-full">رفع وحفظ</button></form>
-<div class="lg:col-span-3 space-y-2">${data.map(p=>`<div class="card !p-3 flex flex-wrap items-center justify-between gap-2 text-xs"><div><b>${esc(p.title)}</b><div class="text-slate-500">${fmt(price(p))} • مبيعات ${p.sales_count}</div></div><div class="flex gap-1"><select class="inp !w-auto" onchange="setStatus('${esc(p.id)}',this.value)">${['published','draft','archived'].map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${{published:'منشور',draft:'مسودة',archived:'مؤرشف'}[s]}</option>`).join('')}</select><button class="btn2" onclick="editProduct('${esc(p.id)}')">تعديل</button><button class="btn2" onclick="previewProduct('${esc(p.id)}')">معاينة</button><button class="btn2 !text-rose-600" onclick="delProduct('${esc(p.id)}','${esc(p.file_path||'')}','${esc(p.cover_path||'')}')">حذف</button></div></div>`).join('')||empty('لا توجد منتجات.')}</div></div>`};
-async function setStatus(id,s){await run(null,async()=>{const{error}=await sb.from('products').update({status:s}).eq('id',id);if(error)throw error;await loadProducts();toast('تم التحديث.')})}
+<div class="lg:col-span-3 space-y-2">${data.map(p=>`<div class="card !p-3 flex flex-wrap items-center justify-between gap-2 text-xs"><div><b>${esc(p.title)}</b><div class="text-slate-500">${fmt(price(p))} • مبيعات ${p.sales_count}</div></div><div class="flex gap-1"><select class="inp !w-auto" onchange="setProdStatus('${esc(p.id)}',this.value)">${['published','draft','archived'].map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${{published:'منشور',draft:'مسودة',archived:'مؤرشف'}[s]}</option>`).join('')}</select><button class="btn2" onclick="editProduct('${esc(p.id)}')">تعديل</button><button class="btn2" onclick="previewProduct('${esc(p.id)}')">معاينة</button><button class="btn2 !text-rose-600" onclick="delProduct('${esc(p.id)}','${esc(p.file_path||'')}','${esc(p.cover_path||'')}')">حذف</button></div></div>`).join('')||empty('لا توجد منتجات.')}</div></div>`};
+async function setProdStatus(id,s){await run(null,async()=>{const{error}=await sb.from('products').update({status:s}).eq('id',id);if(error)throw error;await loadProducts();toast('تم التحديث.')})}
 async function delProduct(id,fp,cp){if(!confirm('حذف المنتج نهائيًا؟'))return;await run(null,async()=>{const{error}=await sb.from('products').delete().eq('id',id);if(error)throw error;if(fp)await sb.storage.from('private-products').remove([fp]);if(cp)await sb.storage.from('public-covers').remove([cp]);await loadProducts();toast('تم الحذف.');go('admin')})}
 A.students=async()=>{const{data,error}=await sb.from('profiles').select('*').eq('role','customer').order('created_at',{ascending:false});if(error)throw error;window._st=data;
   $('#admin-body').innerHTML=`<input class="inp mb-3" placeholder="بحث بالاسم أو الهاتف" oninput="drawStudents(this.value)"><div id="st-list" class="space-y-2"></div>`;drawStudents('')};
@@ -227,7 +228,7 @@ async function go(v,a){view=v;arg=a||null;window.scrollTo(0,0);const app=$('#app
   if(['admin','library'].includes(v)&&!me&&sb){await loadMe()}
   app.innerHTML=(V[v]||V.home)();
   try{if(v==='library')await afterLibrary();if(v==='admin')await afterAdmin()}catch(e){toast(errMsg(e),false)}}
-async function boot(){saveCart();const c=LS('sm_cfg',null);
+async function boot(){saveCart();if(location.hash==='#setup')$('#statusbar').style.display='';const c=LS('sm_cfg',null)||(DEFAULT_CFG.url&&DEFAULT_CFG.key?DEFAULT_CFG:null);
   if(c&&!sb){try{sb=mkClient(c)}catch{}}
   if(sb){try{await loadMe();setStatus(true,'متصل بقاعدة البيانات');await loadProducts();cart=cart.filter(id=>products.some(p=>p.id===id));saveCart()}catch(e){setStatus(false,'فشل الاتصال: '+errMsg(e))}}
   else setStatus(false,'غير متصل: افتح «الإعداد والربط» وأدخل بيانات Supabase.');
